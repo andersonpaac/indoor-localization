@@ -41,6 +41,9 @@ public class Main extends ActionBarActivity implements SensorEventListener{
     // SE = 7
     // setter =8
     //private static final String TAG = activity_main.class.getSimpleName();
+    //@hyp
+    //1- Gyro
+    //2- Remove erratic
     private SensorManager mSensorManager;
     private Sensor aSensor , gSensor , mSensor, lSensor;
     String aName;// = "MPL Accelerometer";
@@ -56,7 +59,9 @@ public class Main extends ActionBarActivity implements SensorEventListener{
     float declination = 0;//+(float)-3.08;//@dev param declination
     long updateinterval=(long)2000000000;
     int wifidelay = 2000;
-    int micdelay=2000;
+    int micdelay=10;
+    double gyro_thresh=2.7;
+    int gyro_delay=600;
     long nextupdateat;
     TextView mag_c;
     TextView acc_c;
@@ -64,10 +69,10 @@ public class Main extends ActionBarActivity implements SensorEventListener{
     TextView writer_c;
     TextView steps_c;
     TextView dist_c;
-    int internal_lim = 18000;  //7000 = 35
-    double stridelength = 2.2; //Stridelength in feet
+    int internal_lim = 9900000;  //7000 = 35
+    double stridelength = 2.4; //Stridelength in feet
     long stime;
-    String fname= "button_test";
+    String fname= "button_test_0";
     String ext=".csv"; //stable
     int volatile_direction = 400; //@dev param volatile
     String aprev="";
@@ -88,6 +93,7 @@ public class Main extends ActionBarActivity implements SensorEventListener{
     long timediff=1000;
     List<Long> running = new ArrayList<Long>();
     List<Direction>Directional = new ArrayList<Direction>();
+    List<Float>Turns_pot = new ArrayList<Float>();
     String Results[] ;
     WifiManager wiman;
     WifiScanReceiver WiRec;
@@ -95,6 +101,7 @@ public class Main extends ActionBarActivity implements SensorEventListener{
     int starter=-1;
     TextView bearing_c;
     audio mic;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
 
@@ -222,8 +229,50 @@ public class Main extends ActionBarActivity implements SensorEventListener{
         //changes=0;
         */
     }
-
+    public void gyro_dir(){
+        ArrayList<debug_gyro> dbg = new ArrayList<debug_gyro>();
+        int idx=0;
+        boolean unset=true;
+        int tprev=0;
+        int g=0;
+        debug_gyro trier=new debug_gyro();
+        while(unset==true){
+            if(idx<=Turns_pot.size()-1){
+                if(Turns_pot.get(idx)>=gyro_thresh){
+                    if((tprev+1!=idx)&&(idx>tprev+gyro_delay)){
+                        trier.idx=idx;
+                        trier.val=Turns_pot.get(idx);
+                        tprev=idx;
+                        g=g+1;
+                    }
+                    else{
+                        tprev=idx;
+                    }
+                }
+                else if(Turns_pot.get(idx)<=-1*gyro_thresh){
+                    if((tprev+1!=idx)&&(idx>tprev+gyro_thresh)){
+                        tprev=idx;
+                        g=g+1;
+                    }
+                    else{
+                        tprev=idx;
+                    }
+                }
+            }
+            else{
+                unset=false;
+            }
+            idx=idx+1;
+        }
+        g=g*90;
+        bearing_c.setText(Integer.toString(g)+" degrees");
+    }
+    public class debug_gyro{
+        Float val;
+        Integer idx;
+    }
     public void directions(){
+
         writer_c.setText("Now Directions!");
         ArrayList<Direction> moveddir = new ArrayList<Direction>();
         ArrayList<Integer>onlychanges = new ArrayList<Integer>();
@@ -373,7 +422,7 @@ public class Main extends ActionBarActivity implements SensorEventListener{
         long sval;
         long uval;
     }
-
+    //Calculates steps
     public void ported_calc(){
         boolean unset = true;
         long t_lval = step_data.get(0).timestamp + timediff;
@@ -525,6 +574,7 @@ public class Main extends ActionBarActivity implements SensorEventListener{
                     nextupdateat = acounter + updateinterval;
                     updateDisplay();
                 }
+                Turns_pot.add(event.values[2]);
             }
             gcounter++;
             gyro_c.setText(Float.toString(gcounter));
@@ -587,23 +637,23 @@ public class Main extends ActionBarActivity implements SensorEventListener{
                 bearing_s = "SETTER, ";
 
 
-                if(bearing >= 0 && bearing < 25){
+                if(bearing >= 0 && bearing < 52){
                     bearing_s = "NORTH";
                 }
 
-                else if(bearing >= 25 && bearing < 118){   //140 , 150 , 160 , 90 , 100
+                else if(bearing >= 52 && bearing < 131){   //140 , 150 , 160 , 90 , 100
                     bearing_s = "EAST";
                 }
 
-                else if(bearing >= 118 && bearing < 193){  //210 , 192 , 220 ,
+                else if(bearing >= 131 && bearing < 203){  //210 , 192 , 220 ,
                     bearing_s = "SOUTH";
                 }
 
 
-                else if(bearing >= 193 && bearing < 305){ //270  , 287  , 256
+                else if(bearing >= 203 && bearing < 320){ //270  , 287  , 256
                     bearing_s =  "WEST";
                 }
-                else if(bearing >= 305 && bearing < 359){
+                else if(bearing >= 320 && bearing < 359){
                     bearing_s  ="NORTH";
                 }
 
@@ -689,8 +739,10 @@ public class Main extends ActionBarActivity implements SensorEventListener{
             mSensorManager.unregisterListener(this,lSensor);
             //ParseIt();
             spawnit_new();
-            ported_calc();
-            directions();
+            ported_calc(); //Calculate steps
+            gyro_dir(); //Calculate directions
+            //directions();
+            writegyro();
             limit=1;
         }
 
@@ -778,6 +830,33 @@ public class Main extends ActionBarActivity implements SensorEventListener{
             for (int gg = 0; gg < running.size(); gg++) {
 
                 String writing = Float.toString(running.get(gg));
+                /*
+                String writing = Float.toString(step_data.get(gg).timestamp) + ", ";
+                writing = writing + Float.toString(step_data.get(gg).accel_y)+"\n";*/
+
+                fOut.write(writing.getBytes());
+            }
+            fOut.close();
+
+            writer_c.setText("Done to " + myFile.getName());
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+    public void writegyro(){
+        writer_c.setText("Now writing Gyro!!!");
+        //String setupstring = "TS, ACCEL_X, ACCEL_Y, ACCEL_Z, GYRO_X, GYRO_Y, GYRO_Z, MAG_X, MAG_Y, MAG_Z, DIRECTION , LIGHT\n";
+        File myFile = new File("/sdcard/" + fname + "_gyro"+ext);
+        Log.i("Writer: Running size is",Float.toString(running.size()));
+        try {
+            myFile.createNewFile();
+            FileOutputStream fOut = new FileOutputStream(myFile);
+
+            //fOut.write(setupstring.getBytes());
+            for (int gg = 0; gg < Turns_pot.size(); gg++) {
+
+                String writing = "\n"+Float.toString(Turns_pot.get(gg));
                 /*
                 String writing = Float.toString(step_data.get(gg).timestamp) + ", ";
                 writing = writing + Float.toString(step_data.get(gg).accel_y)+"\n";*/
